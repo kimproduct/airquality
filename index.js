@@ -136,7 +136,7 @@ function getairquality(intent, session, callback) {
     
     
 
-    var buildpath = `/feed/${cityapi}/?token={yourAPIKey}`;
+    var buildpath = `/feed/${cityapi}/?token={yourAPIKey}`; // http://aqicn.org/data-platform/token/
     console.log(buildpath);
     https.request({
         host: 'api.waqi.info',
