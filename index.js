@@ -1,6 +1,9 @@
 'use strict';
 
 /**
+ * Skill created on the basis of amazon sample code by Kim Asmussen in 2017
+ * E-Mail: kias@gmx.net
+ * 
  * This sample demonstrates a simple skill built with the Amazon Alexa Skills Kit.
  * The Intent Schema, Custom Slots, and Sample Utterances for this skill, as well as
  * testing instructions are located at http://amzn.to/1LzFrj6
@@ -60,6 +63,7 @@ function getWelcomeResponse(callback) {
         buildSpeechletResponse(cardTitle, speechOutput, repromptText, shouldEndSession));
 }
 
+
 function handleSessionEndRequest(callback) {
     const cardTitle = 'Session Ended';
     const speechOutput = 'Tschüss';
@@ -69,6 +73,147 @@ function handleSessionEndRequest(callback) {
     callback({}, buildSpeechletResponse(cardTitle, speechOutput, null, shouldEndSession));
 }
 
+function removespace (str) {
+while (str.includes(" ")) { str = str.replace(" ","") }
+return str;
+}
+
+function getgooglecityname(api, intent, session, callback) {
+
+// Use Google Maps API to normalize the City Information to post this again to the WAPI.info API
+// Function has to built nicer using async features but works as is 
+
+var repromptText = `Versuche zum Beispiel folgende Frage: Wie ist die Luftqualität in Hamburg`;
+var sessionAttributes = {};
+var shouldEndSession = false;
+var city = intent.slots.city.value;
+var speechOutput = `Entschuldigung, der Luftqualitätsindex für ${city} konnte nicht ermittelt werden. Versuche eine andere Stadt.`;
+var httpgm = require("https");
+var urlgm = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(api)}&key=[yourGoogleMapsAPIkey]`;
+var cityGMAPI = {};
+    var requestgm = https.get(urlgm, function (response) {
+    var buffergm = "",
+        datagm,
+        citylat,
+        citylng;
+
+    response.on("data", function (chunk) {
+        buffergm += chunk;
+    });
+
+    response.on("end", function (err) {
+
+        datagm = JSON.parse(buffergm);
+        console.log("DATA",datagm);
+        console.log("GMSTATUS",datagm.status);
+        if (datagm.status == 'OK') {
+            cityGMAPI = removespace(datagm.results[0].address_components[0].long_name.toLowerCase());
+            cityGMAPI = encodeURI (cityGMAPI,"utf-8");
+            citylat = datagm.results[0].geometry.location.lat;
+            citylng = datagm.results[0].geometry.location.lng;
+            console.log("LAT",citylat);
+            console.log("LNG",citylng);
+            
+            console.log("CITYGMAPI",cityGMAPI);
+        }
+        else 
+            {
+            speechOutput = "Hoppla! Da konnte ich nichts finden. Versuche es noch einmal! Zum Beispiel mit Wie ist die Luftqualität in Hamburg?"
+            callback(sessionAttributes,
+            buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));     
+            }
+// Use Google Map API results to ask the waqi.info API     
+    var http = require("https");
+// Option 1: Use City API
+    var url = `https://api.waqi.info/feed/${cityGMAPI}/?token=[yourAPItoken]`;
+// Option 2: Use Lat and Lng Info
+//var url = `https://api.waqi.info/feed/geo:${citylat};${citylng}/?token=[yourAPItoken]`;
+
+    var request = https.get(url, function (response) {
+    var buffer = "",
+        data;
+    console.log ("URL",url)    
+    response.on("data", function (chunk) {
+        buffer += chunk;
+    });
+
+    response.on("end", function (err) {
+
+        data = JSON.parse(buffer);
+        console.log("DATA",data);
+       
+        if (data.status != 'error')
+        {
+            var aqi = data.data.aqi  
+            console.log("AQI",aqi);
+            var name = data.data.city.name
+            console.log("STATION",name)
+            var quality = getaqiquality(aqi);
+            console.log("QUALITY",quality)
+                if (aqi !="-") 
+                {
+                    speechOutput = `Der Luftqualitätsindex für ${city} von der Station ${name} beträgt ${aqi}, das bedeutet ${quality}`;
+                    shouldEndSession = true;
+                } 
+                else 
+                {
+                    speechOutput = `Leider wurde der Luftqualitätsindex für ${city} von der Station ${api} nicht übermittelt`;
+                    shouldEndSession = true;
+                }
+        
+            console.log("CITYGMAPI2",cityGMAPI);
+            callback(sessionAttributes,
+            buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession)); 
+                
+                }
+        else {
+            speechOutput = "Hoppla! Da konnte ich nichts finden. Versuche es noch einmal! Zum Beispiel mit Wie ist die Luftqualität in Hamburg?"
+            callback(sessionAttributes,
+            buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));     
+        }
+    });
+    });
+});
+    
+});
+return cityGMAPI;
+}
+
+function getcityapi(city){
+    var cityapi = removespace(city.toLowerCase());
+        
+        switch (cityapi) {
+            case "köln":
+                cityapi = "cologne";
+                break;
+            case "münchen":
+                cityapi = "munich";
+                break;          
+            case "tokio":
+                cityapi = "tokyo";
+                break;
+            case "rom":
+                cityapi = "rome";
+                break;
+            case "peking":
+                cityapi = "beijing";
+                break;
+            default:
+                cityapi = cityapi;
+        }
+    return cityapi;
+}
+
+function getaqiquality(aqi) {
+    var quality = "gut";
+        if (aqi > 300) {quality="gefährlich, meide es draußen zu sein!"
+            } else if (aqi > 200) {quality="sehr ungesund";
+            } else if (aqi > 150) {quality="ungesund";
+            } else if (aqi > 100) {quality="ungesund für empfindliche Menschen";
+            } else if (aqi > 50) {quality="mittelmäßig";
+        }
+    return quality;
+}
 
 
 function getairquality(intent, session, callback) {
@@ -77,73 +222,65 @@ function getairquality(intent, session, callback) {
     let shouldEndSession = false;
     if (intent.slots.city.value != null) 
     {
+        console.log("INTENT",intent);
         var city = intent.slots.city.value;
         console.log("CITY", city);
-        var cityapi = intent.slots.city.value.toLowerCase();
-        cityapi = cityapi.replace(" ","");
-        cityapi = cityapi.replace(" ","");
-        cityapi = cityapi.replace(" ","");
-        cityapi = cityapi.replace(" ","");
-        cityapi = cityapi.replace(" ","");
-        console.log("CITY2", cityapi);
-        
-        var speechOutput = `Entschuldigung, der Luftqualitätsindex für ${city} konnte nicht ermittelt werden. Versuche eine andere Stadt oder die englische Aussprache`;
-        var quality = {};
-        var aqi = {};
-        let name = {};
-
+        var cityapi = getcityapi(city);
+        console.log("CITYAPI", cityapi);
+        // var speechOutput = `Entschuldigung, der Luftqualitätsindex für ${city} konnte nicht ermittelt werden. Versuche eine andere Stadt oder die englische Aussprache`;
         var httpCb = function(response) {
-            var str = '';
-            response.on('data',function(chunk){
-                str +=chunk;
-            });
-            response.on('end',function(){
-                console.log("STRING",str);
-                var data = JSON.parse(str);
-                if (data.status != 'error')
-                {
+        var str = '';
+        response.on('data',function(chunk){
+            str +=chunk;
+        });
+        response.on('end',function(){
+            console.log("STRING",str);
+            var data = JSON.parse(str);
+        
+        if (data.status != 'error')
+        {
                     console.log("DATA",data);
                     var aqi = data.data.aqi  
                     console.log("AQI",aqi);
-                    name = data.data.city.name
+                    var name = data.data.city.name
                     console.log("STATION",name)
-                    var quality = "gut";
-                    if (aqi > 300) {quality="gefährlich, meide es draußen zu sein!"
-                        } else if (aqi > 200) {quality="sehr ungesund";
-                        } else if (aqi > 150) {quality="ungesund";
-                        } else if (aqi > 100) {quality="ungesund für empfindliche Menschen";
-                        } else if (aqi > 50) {quality="mittelmäßig";
-                    }
+                    var quality = getaqiquality(aqi);
                     console.log("QUALITY",quality)
-                    
-                    speechOutput = `Der Luftqualitätsindex in ${name} ist ${aqi}, das bedeutet ${quality}`;
-                    shouldEndSession = true;
+                    if (aqi !="-") {
+                        var speechOutput = `Der Luftqualitätsindex in ${city} für die Station ${name} beträgt ${aqi}, das bedeutet ${quality}`;
+                        shouldEndSession = true;
+                        callback(sessionAttributes,
+                        buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));
+                    } else {
+                        var speechOutput = `Der Luftqualitätsindex für die Station ${name} in ${city} wurde nicht übermittelt`;
+                        shouldEndSession = true;
+                        callback(sessionAttributes,
+                        buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));
+                    }
                 }
-            
-            callback(sessionAttributes,
-            buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));
-            
-        
-            });
+            else
+                {
+                    console.log("ELSE WIRD ERREICHT");
+                    getgooglecityname (cityapi, intent, session, callback);
+                }
+
+        });
         };
-    } 
-    else 
+        var buildpath = `/feed/${cityapi}/?token=[yourAPItoken]`;
+            console.log(buildpath);
+            https.request({
+                host: 'api.waqi.info',
+                path: buildpath
+            }, httpCb).end();
+        }
+        else 
         {
-            speechOutput = "Hoppla! Da konnte ich nichts finden. Versuche es noch einmal! Zum Beispiel mit Wie ist die Luftqualität in Hamburg?"
+
+            var speechOutput = "Hoppla! Da konnte ich nichts finden. Versuche es noch einmal! Zum Beispiel mit Wie ist die Luftqualität in Hamburg?"
             callback(sessionAttributes,
             buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession)); 
         }
-    
-    
-
-    var buildpath = `/feed/${cityapi}/?token={yourAPIKey}`; // http://aqicn.org/data-platform/token/
-    console.log(buildpath);
-    https.request({
-        host: 'api.waqi.info',
-        path: buildpath
-    }, httpCb).end();
-
-  
+        
 
     // Setting repromptText to null signifies that we do not want to reprompt the user.
     // If the user does not respond or says something that is not understood, the session
@@ -151,6 +288,8 @@ function getairquality(intent, session, callback) {
  //    callback(sessionAttributes,
  //        buildSpeechletResponse(intent.name, speechOutput, repromptText, shouldEndSession));   
 }
+
+
 
 
 // --------------- Events -----------------------
